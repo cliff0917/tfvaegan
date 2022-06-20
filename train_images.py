@@ -45,7 +45,7 @@ print(netDec)
 input_res = torch.FloatTensor(opt.batch_size, opt.resSize)
 input_att = torch.FloatTensor(opt.batch_size, opt.attSize) #attSize class-embedding size
 noise = torch.FloatTensor(opt.batch_size, opt.nz)
-one = torch.FloatTensor([1])
+one = torch.tensor(1, dtype=torch.float)
 mone = one * -1
 ##########
 # Cuda
@@ -61,11 +61,11 @@ if opt.cuda:
     mone = mone.cuda()
 
 def loss_fn(recon_x, x, mean, log_var):
-    BCE = torch.nn.functional.binary_cross_entropy(recon_x+1e-12, x.detach(),size_average=False)
+    BCE = torch.nn.functional.binary_cross_entropy(recon_x+1e-12, x.detach(), reduction='none')
     BCE = BCE.sum()/ x.size(0)
     KLD = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())/ x.size(0)
     return (BCE + KLD)
-           
+
 def sample():
     batch_feature, batch_att = data.next_seen_batch(opt.batch_size)
     input_res.copy_(batch_feature)
@@ -76,11 +76,11 @@ def WeightedL1(pred, gt):
     wt /= wt.sum(1).sqrt().unsqueeze(1).expand(wt.size(0),wt.size(1))
     loss = wt * (pred-gt).abs()
     return loss.sum()/loss.size(0)
-    
+
 def generate_syn_feature(generator,classes, attribute,num,netF=None,netDec=None):
     nclass = classes.size(0)
     syn_feature = torch.FloatTensor(nclass*num, opt.resSize)
-    syn_label = torch.LongTensor(nclass*num) 
+    syn_label = torch.LongTensor(nclass*num)
     syn_att = torch.FloatTensor(num, opt.attSize)
     syn_noise = torch.FloatTensor(num, opt.nz)
     if opt.cuda:
@@ -91,8 +91,8 @@ def generate_syn_feature(generator,classes, attribute,num,netF=None,netDec=None)
         iclass_att = attribute[iclass]
         syn_att.copy_(iclass_att.repeat(num, 1))
         syn_noise.normal_(0, 1)
-        syn_noisev = Variable(syn_noise,volatile=True)
-        syn_attv = Variable(syn_att,volatile=True)
+        syn_noisev = Variable(syn_noise)
+        syn_attv = Variable(syn_att)
         fake = generator(syn_noisev,c=syn_attv)
         if netF is not None:
             dec_out = netDec(fake) # only to call the forward function of decoder
@@ -147,19 +147,19 @@ for epoch in range(0,opt.nepoch):
             gp_sum = 0 #lAMBDA VARIABLE
             for iter_d in range(opt.critic_iter):
                 sample()
-                netD.zero_grad()          
+                netD.zero_grad()
                 input_resv = Variable(input_res)
                 input_attv = Variable(input_att)
 
                 netDec.zero_grad()
                 recons = netDec(input_resv)
-                R_cost = opt.recons_weight*WeightedL1(recons, input_attv) 
+                R_cost = opt.recons_weight*WeightedL1(recons, input_attv)
                 R_cost.backward()
                 optimizerDec.step()
                 criticD_real = netD(input_resv, input_attv)
                 criticD_real = opt.gammaD*criticD_real.mean()
                 criticD_real.backward(mone)
-                if opt.encoded_noise:        
+                if opt.encoded_noise:
                     means, log_var = netE(input_resv, input_attv)
                     std = torch.exp(0.5 * log_var)
                     eps = torch.randn([opt.batch_size, opt.latent_size]).cpu()
@@ -185,7 +185,7 @@ for epoch in range(0,opt.nepoch):
                 gradient_penalty = opt.gammaD*calc_gradient_penalty(netD, input_res, fake.data, input_att)
                 # if opt.lambda_mult == 1.1:
                 gp_sum += gradient_penalty.data
-                gradient_penalty.backward()         
+                gradient_penalty.backward()
                 Wasserstein_D = criticD_real - criticD_fake
                 D_cost = criticD_fake - criticD_real + gradient_penalty #add Y here and #add vae reconstruction loss
                 optimizerD.step()
@@ -225,10 +225,10 @@ for epoch in range(0,opt.nepoch):
 
             vae_loss_seen = loss_fn(recon_x, input_resv, means, log_var) # minimize E 3 with this setting feedback will update the loss as well
             errG = vae_loss_seen
-            
+
             if opt.encoded_noise:
                 criticG_fake = netD(recon_x,input_attv).mean()
-                fake = recon_x 
+                fake = recon_x
             else:
                 noise.normal_(0, 1)
                 noisev = Variable(noise)
@@ -241,7 +241,7 @@ for epoch in range(0,opt.nepoch):
                 else:
                     fake = netG(noisev, c=input_attv)
                 criticG_fake = netD(fake,input_attv).mean()
-                
+
 
             G_cost = -criticG_fake
             errG += opt.gammaG*G_cost
@@ -256,15 +256,15 @@ for epoch in range(0,opt.nepoch):
             if loop == 1:
                 optimizerF.step()
             if opt.recons_weight > 0 and not opt.freeze_dec: # not train decoder at feedback time
-                optimizerDec.step() 
-        
-    print('[%d/%d]  Loss_D: %.4f Loss_G: %.4f, Wasserstein_dist:%.4f, vae_loss_seen:%.4f'% (epoch, opt.nepoch, D_cost.data[0], G_cost.data[0], Wasserstein_D.data[0],vae_loss_seen.data[0]),end=" ")
+                optimizerDec.step()
+
+    print('[%d/%d]  Loss_D: %.4f Loss_G: %.4f, Wasserstein_dist:%.4f, vae_loss_seen:%.4f'% (epoch, opt.nepoch, D_cost.data.item(), G_cost.data.item(), Wasserstein_D.data.item(),vae_loss_seen.data.item()),end=" ")
     netG.eval()
     netDec.eval()
     netF.eval()
     syn_feature, syn_label = generate_syn_feature(netG,data.unseenclasses, data.attribute, opt.syn_num,netF=netF,netDec=netDec)
     # Generalized zero-shot learning
-    if opt.gzsl:   
+    if opt.gzsl:
         # Concatenate real seen features with synthesized unseen features
         train_X = torch.cat((data.train_feature, syn_feature), 0)
         train_Y = torch.cat((data.train_label, syn_label), 0)

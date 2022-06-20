@@ -73,7 +73,7 @@ class CLASSIFIER:
                 labelv = Variable(self.label)
                 output = self.model(inputv)
                 loss = self.criterion(output, labelv)
-                mean_loss += loss.data[0]
+                mean_loss += loss.data.item()
                 loss.backward()
                 self.optimizer.step()
                 #print('Training classifier loss= ', loss.data[0])
@@ -159,9 +159,9 @@ class CLASSIFIER:
         for i in range(0, ntest, self.batch_size):
             end = min(ntest, start+self.batch_size)
             if self.cuda:
-                inputX = Variable(test_X[start:end].cuda(), volatile=True)
+                inputX = Variable(test_X[start:end].cuda())
             else:
-                inputX = Variable(test_X[start:end], volatile=True)
+                inputX = Variable(test_X[start:end])
             output = self.model(inputX)  
             _, predicted_label[start:end] = torch.max(output.data, 1)
             start = end
@@ -185,9 +185,9 @@ class CLASSIFIER:
         for i in range(0, ntest, self.batch_size):
             end = min(ntest, start+self.batch_size)
             if self.cuda:
-                inputX = Variable(test_X[start:end].cuda(), volatile=True)
+                inputX = Variable(test_X[start:end].cuda())
             else:
-                inputX = Variable(test_X[start:end], volatile=True)
+                inputX = Variable(test_X[start:end])
             output = self.model(inputX) 
             _, predicted_label[start:end] = torch.max(output.data, 1)
             start = end
@@ -210,9 +210,9 @@ class CLASSIFIER:
         for i in range(0, ntest, self.batch_size):
             end = min(ntest, start+self.batch_size)
             if self.cuda:
-                inputX = Variable(test_X[start:end].cuda(), volatile=True)
+                inputX = Variable(test_X[start:end].cuda())
             else:
-                inputX = Variable(test_X[start:end], volatile=True)
+                inputX = Variable(test_X[start:end])
             feat1 = self.netDec(inputX)
             feat2 = self.netDec.getLayersOutDet()
             new_test_X[start:end] = torch.cat([inputX,feat1,feat2],dim=1).data.cpu()
